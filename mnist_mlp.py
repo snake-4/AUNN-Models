@@ -11,7 +11,7 @@ from itertools import islice
 from impl.utils import *
 from impl.mlp_models import *
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = get_torch_device()
 
 train_model = True  # Set to False to only evaluate the model
 model_path = "./data/mnist_model.pt"
@@ -59,7 +59,7 @@ mnist_loader = DataLoader(mnist_dataset, shuffle=False, batch_size=training_batc
 
 
 def train():
-    maxTrainedIndex = 0
+    highestTrainedIndex = 0
     batch_size = min(mnist_loader.batch_size, training_image_count)
     targetBatchCount = training_image_count // batch_size
 
@@ -79,7 +79,7 @@ def train():
 
             beginIndex = batch_idx * pixelCountInBatch
             endIndex = beginIndex + pixelCountInBatch - 1
-            maxTrainedIndex = max(maxTrainedIndex, endIndex)
+            highestTrainedIndex = max(highestTrainedIndex, endIndex)
 
             inputs = binary_arange(beginIndex, endIndex + 1, model_input_width, device)
 
@@ -93,7 +93,7 @@ def train():
         scheduler.step()
 
     torch.save(model.state_dict(), model_path)
-    print(f"Training finished. Model saved. Highest trained index: {maxTrainedIndex}")
+    print(f"Training finished. Model saved. Highest trained index: {highestTrainedIndex}")
 
 
 def evaluate():

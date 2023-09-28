@@ -1,6 +1,17 @@
 import torch
 from PIL import Image
 
+def get_torch_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    try:
+        import torch_directml      
+        if torch_directml.device_count() > 0:
+            return torch_directml.device(0)        
+    except ImportError:
+        pass
+    return "cpu"
+
 def binary_encode_tensor(x: torch.Tensor, bits):
     mask = 2 ** torch.arange(bits).to(x.device, x.dtype)
     return x.unsqueeze(-1).bitwise_and(mask).ne(0).byte()
