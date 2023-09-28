@@ -39,7 +39,7 @@ class InvertedBottleneckMLP(nn.Module):
         super().__init__()
 
         self.inLayer = nn.Linear(in_dim, hidden_width)
-        self.outLayer = nn.Sequential(nn.Linear(hidden_width, out_dim), nn.Sigmoid())
+        self.outLayer = nn.Linear(hidden_width, out_dim)
 
         self.hiddenLayers = nn.ModuleList()
         for _ in range(hidden_depth):
@@ -60,7 +60,7 @@ class NormalMLP(nn.Module):
 
         self.isResidual = is_residual
         self.inLayer = nn.Linear(in_dim, hidden_width)
-        self.outLayer = nn.Sequential(nn.Linear(hidden_width, out_dim), nn.Sigmoid())
+        self.outLayer = nn.Linear(hidden_width, out_dim)
 
         self.hiddenLayers = nn.ModuleList()
         for _ in range(hidden_depth):
