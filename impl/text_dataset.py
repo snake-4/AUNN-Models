@@ -4,8 +4,8 @@ filename = "./data/test.txt"
 
 class TextModelDataset(Dataset):
     def __init__(self):
-        with open(filename) as f:
-            self.X = f.read().replace('\r', '')
+        with open(filename, "rb") as f:
+            self.X = f.read().decode('ascii', 'replace').replace('\r', '?').replace('�','?')
     
     def __len__(self):
         return len(self.X)
