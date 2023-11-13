@@ -4,6 +4,8 @@ from PIL import Image
 def get_torch_device():
     if torch.cuda.is_available():
         return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
     try:
         import torch_directml      
         if torch_directml.device_count() > 0:
@@ -12,14 +14,14 @@ def get_torch_device():
         pass
     return "cpu"
 
-def binary_encode_tensor(x: torch.Tensor, bits):
+def binary_encode_tensor(x: torch.Tensor, bits: int, dtype: torch.dtype = torch.get_default_dtype()):
     mask = 2 ** torch.arange(bits).to(x.device, x.dtype)
-    return x.unsqueeze(-1).bitwise_and(mask).ne(0).byte()
+    return x.unsqueeze(-1).bitwise_and(mask).ne(0).type(dtype) # This was always uint8
 
 
 def binary_arange(startIdx, endIdx, bits, device):
     input1 = torch.arange(startIdx, endIdx, dtype=torch.int64, device=device)
-    return binary_encode_tensor(input1, bits).type(torch.get_default_dtype())
+    return binary_encode_tensor(input1, bits)
 
 
 def pillow_generate_canvas(images: list[Image.Image], row_length):
