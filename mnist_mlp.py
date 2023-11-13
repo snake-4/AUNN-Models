@@ -19,7 +19,6 @@ output_path = "./data/out.png"
 
 # MNIST dataset is 28x28
 training_image_dim = (28, 28)
-training_image_count = 200
 
 # You might need more epochs with higher batch sizes to converge
 # Increasing the depth of the model lets it converge earlier
@@ -59,27 +58,18 @@ mnist_loader = DataLoader(mnist_dataset, shuffle=False, batch_size=training_batc
 
 
 def train():
-    highestTrainedIndex = 0
-    batch_size = min(mnist_loader.batch_size, training_image_count)
-    targetBatchCount = training_image_count // batch_size
-
     model.train()
     for _ in tqdm(range(training_epochs)):
-        batch_it = tqdm(
-            islice(mnist_loader, targetBatchCount), total=targetBatchCount, leave=False
-        )
-
-        for batch_idx, (batchValues, _) in enumerate(batch_it):
+        for batch_idx, (batchValues, _) in enumerate(tqdm(mnist_loader, leave=False)):
             optimizer.zero_grad()
 
             batchValues = batchValues.to(device).reshape(-1)
             pixelCountInBatch = (
-                batch_size * training_image_dim[0] * training_image_dim[1]
+                len(batchValues) * training_image_dim[0] * training_image_dim[1]
             )
 
             beginIndex = batch_idx * pixelCountInBatch
             endIndex = beginIndex + pixelCountInBatch - 1
-            highestTrainedIndex = max(highestTrainedIndex, endIndex)
 
             inputs = binary_arange(beginIndex, endIndex + 1, model_input_width, device)
 
@@ -93,15 +83,16 @@ def train():
         scheduler.step()
 
     torch.save(model.state_dict(), model_path)
-    print(f"Training finished. Model saved. Highest trained index: {highestTrainedIndex}")
+    print(f"Training finished. Model saved.")
 
 
 def evaluate():
     pixelCount = training_image_dim[0] * training_image_dim[1]
+    imageCount = 200
     images = []
 
     model.eval()
-    for i in tqdm(range(training_image_count)):
+    for i in tqdm(range(imageCount)):
         luminance_map = torch.Tensor()
         with torch.no_grad():
             beginIndex = i * pixelCount
@@ -116,7 +107,7 @@ def evaluate():
         tensor_to_pil = transforms.ToPILImage()(luminance_map)
         images.append(tensor_to_pil)
 
-    canvas = pillow_generate_canvas(images, math.ceil(math.sqrt(training_image_count)))
+    canvas = pillow_generate_canvas(images, math.ceil(math.sqrt(imageCount)))
     canvas.save(output_path)
     print("Evaluation complete. Image file saved.")
 
