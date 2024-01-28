@@ -26,7 +26,7 @@ training_batch_size = 50
 
 # Input is a 38-bit index. Output is a luminance value between [0, 1]
 model_input_width = 38
-model = nn.Sequential(NormalMLP(
+model = nn.Sequential(ResMLPModel(
             in_dim=model_input_width,
             out_dim=1,
             hidden_width=128,

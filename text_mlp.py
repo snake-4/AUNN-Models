@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler
 from tqdm import tqdm
 
 from impl.utils import *
@@ -13,46 +14,57 @@ device = get_torch_device()
 
 train_model = True  # Set to False to only evaluate the model
 model_path = "./data/text_model.pt"
+dataset_path = "./data/test.txt"
 
 # Input is a 64-bit index. Output is a probability vector over possible byte values
 model_input_width = 64
-model = NormalMLP(
-    in_dim=model_input_width,
-    out_dim=256,
-    hidden_width=1024,
-    hidden_depth=512,
-    is_residual=True
+model = ResMLPModel(
+    in_dim=model_input_width, out_dim=256, hidden_width=4096, hidden_depth=16
 ).to(device)
 
 # Trial and error <3. Feel free to change these parameters.
 training_epochs = 2
-training_batch_size = 1000
-optimizer = optim.SGD(model.parameters(), lr=1e-3)
-scheduler = StepLR(optimizer, step_size=5000, gamma=0.9)
-lossFunc = nn.CrossEntropyLoss()
+textDataset = BinaryIndexedTextDataset(filename=dataset_path, bits=model_input_width)
+textLoader = DataLoader(
+    textDataset,
+    shuffle=False,
+    batch_size=4096,
+    num_workers=4,
+    pin_memory=True,
+    pin_memory_device=device,
+)
 
-textDataset = TextModelDataset()
-textLoader = DataLoader(textDataset, shuffle=False, batch_size=training_batch_size)
+optimizer = optim.SGD(model.parameters(), lr=1e-3)
+scaler = GradScaler()
+loss_fn = nn.CrossEntropyLoss()
+
+# 10 scheduler steps per epoch, last LR will be LR*gamma^10
+scheduler = StepLR(
+    optimizer, gamma=0.9, step_size=(len(textDataset) // textLoader.batch_size // 10)
+)
 
 
 def train():
     model.train()
     for _ in tqdm(range(training_epochs)):
-        for batch_idx, batchValues in enumerate(tqdm(textLoader, leave=False)):
+        for inputs, targets in tqdm(textLoader, leave=False):
             optimizer.zero_grad()
 
-            batchValues = batchValues.to(device)
+            inputs = inputs.to(device)
+            targets = targets.to(device)
 
-            beginIndex = batch_idx * len(batchValues)
-            endIndex = beginIndex + len(batchValues) - 1
+            # Runs the forward pass with autocasting.
+            with torch.autocast(device_type=device, dtype=torch.float16):
+                output = model(inputs)
+                loss = loss_fn(output, targets)
 
-            inputs = binary_arange(beginIndex, endIndex + 1, model_input_width, device)
-            output = model(inputs).reshape(-1, 256)
-
-            loss = lossFunc(output, batchValues)
-            loss.backward()
-            optimizer.step()
+            # Scales loss.  Calls backward() on scaled loss to create scaled gradients.
+            # Backward passes under autocast are not recommended.
+            # Backward ops run in the same dtype autocast chose for corresponding forward ops.
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
             scheduler.step()
+            scaler.update()
 
     torch.save(model.state_dict(), model_path)
     print(f"Training finished. Model saved.")
@@ -62,14 +74,16 @@ def evalAndMetaTrain(optimizerArg, modelInput):
     optimizerArg.zero_grad()
     output = torch.softmax(model(modelInput), dim=0)
     sampledTensor = torch.multinomial(output, num_samples=1)
-    # CrossEntropyLoss expects batched inputs
-    loss = lossFunc(output.reshape(-1, 256), sampledTensor)
+    # CrossEntropyLoss expects batched inputs, [[0]] instead of [0]
+    # but we are evaluating a single token at once
+    loss = loss_fn(output.unsqueeze(0), sampledTensor)
     loss.backward()
     optimizerArg.step()
     return sampledTensor
 
 
 def evaluate():
+    print("Evaluating model...")
     model.train()
     evalOptimizer = optim.SGD(model.parameters(), lr=1e-4)
     evalOffset = len(textDataset)
@@ -77,20 +91,23 @@ def evaluate():
 
     for idx in range(evalOffset, evalOffset + evalTokenCount):
         encodedIdx = binary_encode_tensor(
-            torch.tensor(idx).to(device), model_input_width
+            torch.tensor(idx, device=device), model_input_width
         )
         sampledTensor = evalAndMetaTrain(evalOptimizer, encodedIdx)
         print(chr(sampledTensor.item()), end="")
 
 
-if train_model:
-    try:
-        model.load_state_dict(torch.load(model_path))
-        print("Loaded existing model for training.")
-    except:
-        print("Loading existing model failed. Training a new one...")
-    train()
-else:
-    model.load_state_dict(torch.load(model_path))
+if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn")
+    if train_model:
+        try:
+            model.load_state_dict(torch.load(model_path))
+            print("Loaded existing model for training.")
+        except:
+            print("Loading existing model failed. Training a new one...")
 
-evaluate()
+        train()
+    else:
+        model.load_state_dict(torch.load(model_path))
+
+    evaluate()
