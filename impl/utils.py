@@ -25,6 +25,11 @@ def binary_encode_tensor(
     return x.unsqueeze(-1).bitwise_and(mask).ne(0).type(dtype)  # This was always uint8
 
 
+def binary_arange(startIdx, endIdx, bits, device):
+    input1 = torch.arange(startIdx, endIdx, dtype=torch.int64, device=device)
+    return binary_encode_tensor(input1, bits)
+
+
 def pillow_generate_canvas(images: list[Image.Image], row_length):
     canvas_width = row_length * images[0].width
     canvas_height = (len(images) // row_length) * images[0].height
