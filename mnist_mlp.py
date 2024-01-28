@@ -6,7 +6,6 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
-from itertools import islice
 
 from impl.utils import *
 from impl.mlp_models import *
@@ -27,24 +26,12 @@ training_batch_size = 50
 
 # Input is a 38-bit index. Output is a luminance value between [0, 1]
 model_input_width = 38
-class MNISTModel(nn.Module):
-    def __init__(self, ):
-        super().__init__()
-        
-        # You can change the model to InvertedBottleneckMLP
-        self.internal_model = NormalMLP(
+model = nn.Sequential(NormalMLP(
             in_dim=model_input_width,
             out_dim=1,
             hidden_width=128,
-            hidden_depth=4,
-            is_residual=True,
-        ).to(device)
-        self.outLayer = nn.Sigmoid()
-
-    def forward(self, x: torch.Tensor):
-        return self.outLayer(self.internal_model(x))
-
-model = MNISTModel()
+            hidden_depth=4
+), nn.Sigmoid()).to(device)
 
 # Trial and error <3. Feel free to change these parameters.
 optimizer = optim.AdamW(model.parameters(), lr=1e-3)
