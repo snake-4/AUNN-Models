@@ -49,10 +49,10 @@ class TextMLP:
             pin_memory=True,
             pin_memory_device=self.device,
         )
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3)
+        self.loss_fn = nn.CrossEntropyLoss()
         self.scaler = GradScaler()
-
-        # 10 scheduler steps per epoch, last LR will be LR*gamma^10
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3)
+        # Per epoch, last LR will be LR*gamma^10
         self.scheduler = StepLR(
             self.optimizer,
             gamma=0.9,
@@ -110,7 +110,7 @@ class TextMLP:
         self.model.load_state_dict(torch.load(model_path))
 
     @property
-    def highest_trained_index(self):
+    def highest_trained_index(self) -> int:
         # TODO: Fix this?
         return len(self.text_dataset)
 
