@@ -25,7 +25,7 @@ def binary_encode_tensor(
     return x.unsqueeze(-1).bitwise_and(mask).ne(0).type(dtype)  # This was always uint8
 
 
-def binary_arange(startIdx, endIdx, bits, device):
+def binary_arange(startIdx: int, endIdx: int, bits: int, device=None):
     input1 = torch.arange(startIdx, endIdx, dtype=torch.int64, device=device)
     return binary_encode_tensor(input1, bits)
 
