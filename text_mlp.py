@@ -37,7 +37,6 @@ class TextMLP:
             hidden_width=model_hidden_width,
             hidden_depth=model_hidden_depth,
         ).to(self.device)
-        self.loss_fn = nn.CrossEntropyLoss()
         self.text_dataset = BinaryIndexedTextDataset(
             filename=dataset_path, bits=model_input_width
         )
@@ -57,6 +56,15 @@ class TextMLP:
             self.optimizer,
             gamma=0.9,
             step_size=(len(self.text_dataset) // self.text_loader.batch_size // 10),
+        )
+
+        self.meta_learn_epoch = 200
+        self.meta_optimizer = optim.AdamW(self.model.parameters(), lr=1e-3)
+        # Per meta learn call, last LR will be LR*gamma^10
+        self.meta_scheduler = StepLR(
+            self.meta_optimizer, 
+            gamma=0.9,
+            step_size=(self.meta_learn_epoch // 10)
         )
 
     def train(self):
@@ -94,14 +102,14 @@ class TextMLP:
     def evaluate(self, start_index, length):
         print("Evaluating model...")
         self.model.train()
-        evalOptimizer = optim.SGD(self.model.parameters(), lr=1e-4)
+        self.__meta_learn_string(start_index, "Hi, my name is ")
 
         for idx in range(start_index, start_index + length):
             encodedIdx = binary_encode_tensor(
                 torch.tensor(idx, device=self.device), model_input_width
             )
-            sampledTensor = self.__evaluate_and_train(evalOptimizer, encodedIdx)
-            print(chr(sampledTensor.item()), end="")
+            sampledTensor = self.__meta_evaluate_and_learn(encodedIdx)
+            print(chr(sampledTensor.item()), end="", flush=True)
 
     def save_model(self):
         torch.save(self.model.state_dict(), model_path)
@@ -114,15 +122,33 @@ class TextMLP:
         # TODO: Fix this?
         return len(self.text_dataset)
 
-    def __evaluate_and_train(self, modelInput):
-        self.optimizer.zero_grad()
+    def __meta_learn_string(self, index: int, string: str):
+        inputs = binary_arange(
+            index, index + len(string), bits=model_input_width, device=self.device
+        )
+        targets = torch.tensor([ord(x) for x in string], device=self.device)
+        self.__meta_learn_raw(inputs, targets)
+
+    def __meta_learn_raw(
+        self, modelInputs: torch.Tensor, targetOutputs: torch.Tensor
+    ):
+        for _ in range(self.meta_learn_epoch):
+            self.meta_optimizer.zero_grad()
+            output = torch.softmax(self.model(modelInputs), dim=0)
+            loss = self.loss_fn(output, targetOutputs)
+            loss.backward()
+            self.meta_optimizer.step()
+            self.meta_scheduler.step()
+
+    def __meta_evaluate_and_learn(self, modelInput: torch.Tensor) -> torch.tensor:
+        self.meta_optimizer.zero_grad()
         output = torch.softmax(self.model(modelInput), dim=0)
         sampledTensor = torch.multinomial(output, num_samples=1)
         # CrossEntropyLoss expects batched inputs, [[0]] instead of [0]
         # but we are evaluating a single token at once
         loss = self.loss_fn(output.unsqueeze(0), sampledTensor)
         loss.backward()
-        self.optimizer.step()
+        self.meta_optimizer.step()
         return sampledTensor
 
 
